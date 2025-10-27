@@ -30,3 +30,8 @@ Bugs:
 Special Thanks:
 HappyFunTimes101 - ShaderOverride - I could not have done this without this tool. This made sorting out and identifying the shader data much easier. I probably wouldn't have even attempted or known where to look if this didn't exist.
  JCarter426 - For pointing out that the music was broken during dialogue. I hadn't noticed but couldn't stand it after hearing for myself.
+
+## DOWNLOAD
+https://github.com/J0-o/3C-FD-Patcher/releases
+or
+https://deadlystream.com/files/file/2734-fog-fix-more-3c-fd-patcher/
