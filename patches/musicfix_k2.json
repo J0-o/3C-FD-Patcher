@@ -1,0 +1,12 @@
+{
+  "id": "musicfix_k2",
+  "name": "Music Volume Fix for KOTOR2",
+  "description": "Disables audio ducking feature that causes music to be too quiet during dialogue.",
+  "blocks": [
+    {
+      "find": "D8 4D D8 D9 5D F0 DB 45",
+      "replace": "90 90 90 D9 5D F0 DB 45"
+    }
+  ]
+}
+

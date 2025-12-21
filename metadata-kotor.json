@@ -1,0 +1,95 @@
+{
+  "tabs": [
+    {
+      "name": "Sound Options",
+      "keys": [
+        { "key": "Sound Init", "type": "bool", "tooltip": "Internal sound system init flag." },
+        { "key": "Music Volume", "type": "slider-int", "min": 0, "max": 100, "tooltip": "Music volume (0-100)." },
+        { "key": "Voiceover Volume", "type": "slider-int", "min": 0, "max": 100, "tooltip": "Dialogue/voice volume (0-100)." },
+        { "key": "Sound Effects Volume", "type": "slider-int", "min": 0, "max": 100, "tooltip": "Sound effects volume (0-100)." },
+        { "key": "Movie Volume", "type": "slider-int", "min": 0, "max": 100, "tooltip": "Cutscene/movie audio volume (0-100)." },
+        { "key": "Force Software", "type": "bool", "tooltip": "Forces software audio mixing instead of hardware acceleration." },
+        { "key": "EAX", "type": "text", "tooltip": "Environmental Audio (EAX) level (commonly 0=off)." },
+        { "key": "Disable Sound", "type": "bool", "tooltip": "Disables all audio." },
+        { "key": "Number 3D Voices", "type": "number", "tooltip": "Number of 3D sound channels (positional audio)." },
+        { "key": "Number 2D Voices", "type": "number", "tooltip": "Number of 2D sound channels." },
+        { "key": "Environment Effects Level", "type": "number", "tooltip": "Strength of environmental audio/reverb effects." },
+        { "key": "2D3D Bias", "type": "number", "tooltip": "Balance between 2D and 3D sound loudness." },
+        { "key": "Environment Effects", "type": "bool", "tooltip": "Toggle for environmental audio effects." },
+        { "key": "Environment Effects Nonstreaming", "type": "bool", "tooltip": "Environmental effects applied to non-streaming sounds." },
+        { "key": "Environment Effects Streaming", "type": "bool", "tooltip": "Environmental effects applied to streaming sounds." }
+      ]
+    },
+    {
+      "name": "Game Options",
+      "keys": [
+        { "key": "GUIsInScreenShot", "type": "bool", "tooltip": "Whether screenshots include the UI/HUD." },
+        { "key": "EnableScreenShot", "type": "bool", "tooltip": "Enables screenshot capture (often via Print Screen)." },
+        { "key": "Reverse Mouse Buttons", "type": "bool", "tooltip": "Swaps left/right mouse button actions." },
+        { "key": "Hide InGame GUI", "type": "bool", "tooltip": "Hides the in-game UI/HUD." },
+        { "key": "Use Small Fonts", "type": "bool", "tooltip": "Uses smaller UI fonts." },
+        { "key": "Keyboard Camera Deceleration", "type": "number", "tooltip": "Camera deceleration rate for keyboard panning." },
+        { "key": "Keyboard Camera Acceleration", "type": "number", "tooltip": "Camera acceleration rate for keyboard panning." },
+        { "key": "Keyboard Camera DPS", "type": "number", "tooltip": "Camera maximum rotation speed." },
+        { "key": "Hide Unequippable", "type": "bool", "tooltip": "Hides items you cannot equip in inventory/equip screens." },
+        { "key": "Tutorial Popups", "type": "bool", "tooltip": "Enables tutorial pop-up messages." },
+        { "key": "Subtitles", "type": "bool", "tooltip": "Enables subtitles for dialogue/cutscenes." },
+        { "key": "Mini Map", "type": "bool", "tooltip": "Shows the minimap." },
+        { "key": "Floating Numbers", "type": "bool", "tooltip": "Shows floating combat numbers." },
+        { "key": "Status Summary", "type": "bool", "tooltip": "Shows status summary UI elements." },
+        { "key": "Enable Mouse Teleporting To Buttons", "type": "bool", "tooltip": "Snaps cursor to UI buttons during menu navigation." },
+        { "key": "Mouse Sensitivity", "type": "slider-int", "min": 0, "max": 100, "tooltip": "Mouse look/camera sensitivity (0-100)." },
+        { "key": "Auto Level Up NPCs", "type": "bool", "tooltip": "Automatically levels companions/NPCs." },
+        { "key": "Mouse Look", "type": "bool", "tooltip": "Mouse-look style camera control toggle." },
+        { "key": "AutoSave", "type": "bool", "tooltip": "Enables autosaving." },
+        { "key": "Reverse Minigame YAxis", "type": "bool", "tooltip": "Inverts Y-axis for minigames." },
+        { "key": "Combat Movement", "type": "bool", "tooltip": "Allows movement during combat." },
+        { "key": "Enable Tooltips", "type": "bool", "tooltip": "Enables tooltips when hovering UI elements." },
+        { "key": "Difficulty Level", "type": "slider-int", "min": 0, "max": 5, "tooltip": "Difficulty setting (0-5)." },
+        { "key": "TooltipDelay Sec", "type": "slider-int", "min": 0, "max": 10, "tooltip": "Delay (seconds) before tooltips appear." },
+        { "key": "Memory Access", "type": "bool", "tooltip": "Engine memory flag." },
+        { "key": "Memory Level", "type": "number", "tooltip": "Engine memory level flag." },
+        { "key": "EnableCheats", "type": "bool", "tooltip": "Enables the cheat console." }
+      ]
+    },
+    {
+      "name": "Graphics Options",
+      "keys": [
+        { "key": "AllowWindowedMode", "type": "bool", "tooltip": "Allows windowed mode." },
+        { "key": "RefreshRate", "type": "slider-int", "min": 30, "max": 240, "tooltip": "Monitor refresh rate (Hz)." },
+        { "key": "Height", "type": "number", "tooltip": "Screen resolution height in pixels." },
+        { "key": "Width", "type": "number", "tooltip": "Screen resolution width in pixels." },
+        { "key": "V-Sync", "type": "bool", "tooltip": "Vertical sync toggle." },
+        { "key": "Anisotropy", "type": "slider-int", "min": 0, "max": 16, "tooltip": "Anisotropic filtering level (0-16)." },
+        { "key": "Frame Buffer", "type": "bool", "tooltip": "Frame buffer effects/post-processing toggle." },
+        { "key": "Anti Aliasing", "type": "slider-int", "min": 0, "max": 16, "tooltip": "Anti-aliasing level (0-16)." },
+        { "key": "Texture Quality", "type": "slider-int", "min": 0, "max": 2, "tooltip": "Texture quality preset (0=low, 1=medium, 2=high)." },
+        { "key": "Emitters", "type": "bool", "tooltip": "Particle emitters toggle (sparks, smoke, sprays)." },
+        { "key": "Grass", "type": "bool", "tooltip": "Grass rendering toggle." },
+        { "key": "Soft Shadows", "type": "bool", "tooltip": "Soft shadow rendering toggle." },
+        { "key": "Shadows", "type": "bool", "tooltip": "Master toggle for dynamic shadows." },
+        { "key": "Brightness", "type": "slider-int", "min": 0, "max": 100, "tooltip": "Gamma/brightness control (0-100)." },
+        { "key": "EnableHardwareMouse", "type": "bool", "tooltip": "Hardware cursor toggle." },
+        { "key": "FullScreen", "type": "bool", "tooltip": "Fullscreen mode toggle." },
+        { "key": "Disable Vertex Buffer Objects", "type": "bool", "tooltip": "Disables OpenGL vertex buffer objects." }
+      ]
+    },
+    {
+      "name": "Autopause Options",
+      "keys": [
+        { "key": "Mine Sighted", "type": "bool", "tooltip": "Auto-pauses when a mine is detected." },
+        { "key": "End Of Combat Round", "type": "bool", "tooltip": "Auto-pauses at the end of each combat round." },
+        { "key": "Enemy Sighted", "type": "bool", "tooltip": "Auto-pauses when an enemy is spotted." },
+        { "key": "Party Killed", "type": "bool", "tooltip": "Auto-pauses when a party member dies." },
+        { "key": "Action Menu", "type": "bool", "tooltip": "Auto-pauses when the action menu is opened or actions need input." },
+        { "key": "New Target Selected", "type": "bool", "tooltip": "Auto-pauses when you switch/select a new target." }
+      ]
+    },
+    {
+      "name": "config",
+      "keys": [
+        { "key": "firstrun", "type": "bool", "tooltip": "First-run flag used by launch/config flow." }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "borderless_k1",
+  "name": "Borderless Fullscreen for KOTOR",
+  "description": "Changes Windowed Mode to be Borderless. Requires AllowWindowedMode=1 and Fullsceen=0",
+  "blocks": [
+    {
+      "find": "BE 00 00 CF 02",
+      "replace": "BE 00 00 00 90"
+    }
+  ]
+}
+

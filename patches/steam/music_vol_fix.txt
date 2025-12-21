@@ -1,3 +1,0 @@
-OFFSET=0x30D530
-BYTES=909090
-DESC=Dialogue Music Volume Fix

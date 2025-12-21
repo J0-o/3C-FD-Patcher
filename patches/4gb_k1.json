@@ -1,0 +1,12 @@
+{
+  "id": "4GBMemoryK1",
+  "name": "4GB Memory for KOTOR",
+  "description": "Allows KOTOR to use 4GB of memory instead of only 2GB",
+  "blocks": [
+    {
+      "find": "0F 01 0B 01 07",
+      "replace": "2F 01 0B 01 09"
+    }
+  ]
+}
+

@@ -1,3 +1,0 @@
-OFFSET=0x076169
-BYTES=00000090
-DESC=Enable Borderless Fullscreen
