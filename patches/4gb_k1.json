@@ -5,7 +5,7 @@
   "blocks": [
     {
       "find": "0F 01 0B 01 07",
-      "replace": "2F 01 0B 01 09"
+      "replace": "2F 01 0B 01 07"
     }
   ]
 }

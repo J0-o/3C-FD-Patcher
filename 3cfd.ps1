@@ -247,14 +247,8 @@ function Render-Patches {
 }
 
 # --- Info tab content builder ---
-function Get-SystemInfoSections {
-    $sections = @{
-        Warnings   = New-Object System.Collections.Generic.List[string]
-        SystemInfo = New-Object System.Collections.Generic.List[string]
-        IniOptions = New-Object System.Collections.Generic.List[string]
-        Conflicts  = New-Object System.Collections.Generic.List[string]
-        LargeTxi   = New-Object System.Collections.Generic.List[string]
-    }
+function Get-SystemInfoText {
+    $lines = New-Object System.Collections.Generic.List[string]
 
     if (-not ("DisplayUtil" -as [type])) {
         Add-Type -TypeDefinition @"
@@ -321,15 +315,15 @@ public static class DisplayUtil
 
     try {
         $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
-        if ($cpu) { $sections.SystemInfo.Add("CPU: $($cpu.Name)") }
+        if ($cpu) { $lines.Add("CPU: $($cpu.Name)") }
     } catch {
-        $sections.SystemInfo.Add("CPU: <unavailable>")
+        $lines.Add("CPU: <unavailable>")
     }
 
     try {
         $gpus = Get-CimInstance Win32_VideoController
         if ($gpus) {
-            $sections.SystemInfo.Add("GPUs:")
+            $lines.Add("GPUs:")
             foreach ($gpu in $gpus) {
                 $name = $gpu.Name
                 $ram = if ($gpu.AdapterRAM) { "{0:N0} MB" -f ([Math]::Round($gpu.AdapterRAM / 1MB)) } else { $null }
@@ -338,13 +332,13 @@ public static class DisplayUtil
                 if ($ram) { $extra += $ram }
                 if ($driver) { $extra += "Driver $driver" }
                 $suffix = if ($extra.Count) { " (" + ($extra -join ", ") + ")" } else { "" }
-                $sections.SystemInfo.Add("  - $name$suffix")
+                $lines.Add("  - $name$suffix")
             }
         } else {
-            $sections.SystemInfo.Add("GPUs: <none detected>")
+            $lines.Add("GPUs: <none detected>")
         }
     } catch {
-        $sections.SystemInfo.Add("GPUs: <unavailable>")
+        $lines.Add("GPUs: <unavailable>")
     }
 
     try {
@@ -353,20 +347,20 @@ public static class DisplayUtil
             $caption = $os.Caption
             $version = $os.Version
             $build = $os.BuildNumber
-            $sections.SystemInfo.Add("Windows: $caption (Version $version, Build $build)")
+            $lines.Add("Windows: $caption (Version $version, Build $build)")
         }
     } catch {
-        $sections.SystemInfo.Add("Windows: <unavailable>")
+        $lines.Add("Windows: <unavailable>")
     }
 
     try {
         # Reliable monitor enumeration is tricky via Win32_DesktopMonitor; use Screen + EDID where available.
-        $sections.SystemInfo.Add("Displays (Screens):")
+        $lines.Add("Displays (Screens):")
         try {
             Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
             $screens = [System.Windows.Forms.Screen]::AllScreens
             if (-not $screens -or $screens.Count -eq 0) {
-                $sections.SystemInfo.Add("  - <none detected>")
+                $lines.Add("  - <none detected>")
             } else {
                 foreach ($s in $screens) {
                     $b = $s.Bounds
@@ -374,71 +368,19 @@ public static class DisplayUtil
                     $hz = $null
                     try { $hz = [DisplayUtil]::GetCurrentRefreshRate($s.DeviceName) } catch { $hz = $null }
                     $hzText = if ($hz) { " ${hz}Hz" } else { "" }
-                    $sections.SystemInfo.Add("  - $($s.DeviceName): $($b.Width)x$($b.Height)${hzText} @ ($($b.X),$($b.Y))$isPrimary")
+                    $lines.Add("  - $($s.DeviceName): $($b.Width)x$($b.Height)${hzText} @ ($($b.X),$($b.Y))$isPrimary")
                 }
             }
         } catch {
-            $sections.SystemInfo.Add("  - <unavailable: $($_.Exception.Message)>")
+            $lines.Add("  - <unavailable: $($_.Exception.Message)>")
         }
     } catch {
-        $sections.SystemInfo.Add("Monitors: <unavailable>")
-    }
-
-    try {
-        $sigPath = Join-Path $ToolDirectory 'version-signatures.json'
-        if (Test-Path -LiteralPath $sigPath) {
-            $sigData = Get-Content -LiteralPath $sigPath -Raw -Encoding UTF8 | ConvertFrom-Json
-            $sigs = @($sigData.signatures | Where-Object { $_.game -eq $ResolvedGame })
-            $exePath = Resolve-ExePath -GameId $ResolvedGame -BaseDirectory (Split-Path -Parent $FilePath)
-            if ($exePath -and $sigs.Count -gt 0) {
-                $exeBytes = [IO.File]::ReadAllBytes($exePath)
-                $matched = $null
-                $matchedName = $null
-                foreach ($s in $sigs) {
-                    $pat = Convert-HexPattern -Hex ([string]$s.hex)
-                    $offset = [int]$s.offset
-                    if ($exeBytes.Length -ge $offset + $pat.Bytes.Length) {
-                        $slice = $exeBytes[$offset..($offset + $pat.Bytes.Length - 1)]
-                        $eq = $true
-                        for ($i = 0; $i -lt $pat.Bytes.Length; $i++) {
-                            if ($pat.Bytes[$i] -ne $slice[$i]) { $eq = $false; break }
-                        }
-                        if ($eq) { $matched = $s.name; $matchedName = $s.name; break }
-                    }
-                }
-                if ($matched) {
-                    $sections.SystemInfo.Add("EXE signature: $matched")
-                    if ($matchedName -eq "KOTOR 2 Steam (Aspyr)") {
-                        # Check for Steam Workshop content when using Aspyr build
-                        $steamRoot = $null
-                        $exeDir = Split-Path -Parent $exePath
-                        $cur = $exeDir
-                        while ($cur -and $cur -ne [IO.Path]::GetPathRoot($cur)) {
-                            if ([IO.Path]::GetFileName($cur) -ieq "steamapps") { $steamRoot = $cur; break }
-                            $cur = Split-Path -Parent $cur
-                        }
-                        if ($steamRoot) {
-                            $wsPath = Join-Path $steamRoot "workshop\\content\\208580"
-                            if (Test-Path -LiteralPath $wsPath) {
-                                $any = Get-ChildItem -LiteralPath $wsPath -Force -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-                                if ($any) {
-                                    $sections.Warnings.Add("Warning: Steam Workshop files detected for KOTOR II (Aspyr).")
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    $sections.SystemInfo.Add("EXE signature: <unknown>")
-                }
-            }
-        }
-    } catch {
-        $sections.SystemInfo.Add("EXE signature: <unavailable: $($_.Exception.Message)>")
+        $lines.Add("Monitors: <unavailable>")
     }
 
     try {
         $iniName = Split-Path -Leaf $FilePath
-        $sections.IniOptions.Add("INI ($iniName) Graphics Options:")
+        $lines.Add("INI ($iniName) Graphics Options:")
 
         function Get-IniValue {
             param([string]$Section, [string]$Key)
@@ -475,86 +417,73 @@ public static class DisplayUtil
         foreach ($p in $pairs) {
             $raw = Get-IniValue -Section $graphicsSection -Key $p.Key
             $val = if ($p.Type -eq 'bool') { Format-BoolIni -Value $raw } else { if ($null -eq $raw) { "<missing>" } else { $raw } }
-            $sections.IniOptions.Add("  - $($p.Label): $val")
+            $lines.Add("  - $($p.Label): $val")
         }
     } catch {
-        $sections.IniOptions.Add("INI Graphics Options: <unavailable: $($_.Exception.Message)>")
+        $lines.Add("INI Graphics Options: <unavailable: $($_.Exception.Message)>")
     }
 
     try {
         $overridePath = Join-Path (Split-Path -Parent $FilePath) "Override"
         if (Test-Path -LiteralPath $overridePath) {
+            $count = (Get-ChildItem -LiteralPath $overridePath -File -Recurse -Force | Measure-Object).Count
+            $lines.Add("Override folder files: $count")
+
             try {
-                # Warn if Override contains subfolders
-                $hasFolders = Get-ChildItem -LiteralPath $overridePath -Directory -Force -ErrorAction Stop | Select-Object -First 1
-                if (-not $hasFolders) {
-                    $hasFolders = Get-ChildItem -LiteralPath $overridePath -Directory -Force -Recurse -ErrorAction Stop | Select-Object -First 1
-                }
-                if ($hasFolders) { $sections.Warnings.Add("Warning: Folders detected inside Override.") }
-
-                # Gather potential conflict bases
-                $tpc = @(Get-ChildItem -LiteralPath $overridePath -Recurse -File -Force -Filter *.tpc)
-                $txi = @(Get-ChildItem -LiteralPath $overridePath -Recurse -File -Force -Filter *.txi)
-                $tga = @(Get-ChildItem -LiteralPath $overridePath -Recurse -File -Force -Filter *.tga)
-
+                $tpc = Get-ChildItem -LiteralPath $overridePath -Recurse -File -Force -Filter *.tpc
+                $txi = Get-ChildItem -LiteralPath $overridePath -Recurse -File -Force -Filter *.txi
+                $tpcNames = $tpc | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name).ToLowerInvariant() }
+                $txiNames = $txi | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name).ToLowerInvariant() }
                 $tpcSet = [System.Collections.Generic.HashSet[string]]::new()
-                foreach ($f in $tpc) { [void]$tpcSet.Add([IO.Path]::GetFileNameWithoutExtension($f.Name).ToLowerInvariant()) }
-                $txiSet = [System.Collections.Generic.HashSet[string]]::new()
-                foreach ($f in $txi) { [void]$txiSet.Add([IO.Path]::GetFileNameWithoutExtension($f.Name).ToLowerInvariant()) }
-
-                $conflictBases = $txiSet.Where({ $tpcSet.Contains($_) })
-                $conflictFiles = New-Object System.Collections.Generic.List[string]
-                foreach ($base in $conflictBases) {
-                    $matched = @($tpc + $txi + $tga | Where-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name).ToLowerInvariant() -eq $base })
-                    foreach ($m in $matched) {
-                        $rel = $m.FullName.Substring($overridePath.Length).TrimStart('\')
-                        $conflictFiles.Add($rel)
-                    }
+                foreach ($n in $tpcNames) { [void]$tpcSet.Add($n) }
+                $conflicts = 0
+                foreach ($n in $txiNames) {
+                    if ($tpcSet.Contains($n)) { $conflicts++ }
                 }
-                if ($conflictBases.Count -gt 0) {
-                    $sections.Warnings.Add("Warning: $($conflictBases.Count) TPC/TXI conflict detected.")
-                }
-                if ($conflictFiles.Count -gt 0) {
-                    $sections.Conflicts.AddRange($conflictFiles)
-                } else {
-                    $sections.Conflicts.Add("No TPC/TXI conflicts detected.")
-                }
-
-                # List TXI files over 3KB
-                $sizeLimitBytes = 3KB
-                $largeTxi = @($txi | Where-Object { $_.Length -gt $sizeLimitBytes })
-                if ($largeTxi.Count -gt 0) {
-                    $sections.Warnings.Add("Warning: $($largeTxi.Count) TXI files exceed 3KB.")
-                    foreach ($f in $largeTxi) {
-                        $rel = $f.FullName.Substring($overridePath.Length).TrimStart('\')
-                        $sections.LargeTxi.Add("$rel ($([math]::Round($f.Length / 1KB,2)) KB)")
-                    }
-                } else {
-                    $sections.LargeTxi.Add("No TXI files exceed 3KB.")
-                }
+                $lines.Add("TPC/TXI Conflicts: $conflicts")
             } catch {
-                $sections.Warnings.Add("Warning: Override scan unavailable.")
-                $sections.Conflicts.Add("TPC/TXI conflicts: <unavailable>")
-                $sections.LargeTxi.Add("TXI files over 3KB: <unavailable>")
+                $lines.Add("TPC/TXI Conflicts: <unavailable>")
             }
         } else {
-            $sections.Warnings.Add("Warning: Override folder not found.")
-            $sections.Conflicts.Add("Override folder files: <not found>")
-            $sections.LargeTxi.Add("TXI files over 3KB: <not available>")
+            $lines.Add("Override folder files: <not found>")
         }
     } catch {
-        $sections.Warnings.Add("Warning: Override scan error: $($_.Exception.Message)")
-        $sections.Conflicts.Add("Override folder files: <unavailable>")
-        $sections.LargeTxi.Add("TXI files over 3KB: <unavailable>")
+        $lines.Add("Override folder files: <unavailable: $($_.Exception.Message)>")
     }
 
-    return [pscustomobject]@{
-        Warnings   = ($sections.Warnings -join "`r`n")
-        SystemInfo = ($sections.SystemInfo -join "`r`n")
-        IniOptions = ($sections.IniOptions -join "`r`n")
-        Conflicts  = ($sections.Conflicts -join "`r`n")
-        LargeTxi   = ($sections.LargeTxi -join "`r`n")
+    try {
+        $sigPath = Join-Path $ToolDirectory 'version-signatures.json'
+        if (Test-Path -LiteralPath $sigPath) {
+            $sigData = Get-Content -LiteralPath $sigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $sigs = @($sigData.signatures | Where-Object { $_.game -eq $ResolvedGame })
+            $exePath = Resolve-ExePath -GameId $ResolvedGame -BaseDirectory (Split-Path -Parent $FilePath)
+            if ($exePath -and $sigs.Count -gt 0) {
+                $exeBytes = [IO.File]::ReadAllBytes($exePath)
+                $matched = $null
+                foreach ($s in $sigs) {
+                    $pat = Convert-HexPattern -Hex ([string]$s.hex)
+                    $offset = [int]$s.offset
+                    if ($exeBytes.Length -ge $offset + $pat.Bytes.Length) {
+                        $slice = $exeBytes[$offset..($offset + $pat.Bytes.Length - 1)]
+                        $eq = $true
+                        for ($i = 0; $i -lt $pat.Bytes.Length; $i++) {
+                            if ($pat.Bytes[$i] -ne $slice[$i]) { $eq = $false; break }
+                        }
+                        if ($eq) { $matched = "$($s.name) @ 0x{0:X}" -f $offset; break }
+                    }
+                }
+                if ($matched) {
+                    $lines.Add("EXE signature: $matched")
+                } else {
+                    $lines.Add("EXE signature: <unknown>")
+                }
+            }
+        }
+    } catch {
+        $lines.Add("EXE signature: <unavailable: $($_.Exception.Message)>")
     }
+
+    return ($lines -join "`r`n")
 }
 
 # --- Control factory helpers ---
@@ -577,12 +506,6 @@ function Build-Tabs {
     $infoPanel = New-Object System.Windows.Controls.StackPanel
     $infoPanel.Margin = "8"
 
-    # Red warning text shown when needed
-    $warningBlock = New-Object System.Windows.Controls.TextBlock
-    $warningBlock.Foreground = "Red"
-    $warningBlock.Margin = "0,0,0,8"
-    $warningBlock.Visibility = "Collapsed"
-
     $btnRow = New-Object System.Windows.Controls.StackPanel
     $btnRow.Orientation = "Horizontal"
     $btnRow.Margin = "0,0,0,8"
@@ -601,40 +524,18 @@ function Build-Tabs {
     $indexBtn.Padding = "10,6"
     $indexBtn.Margin = "8,0,0,0"
 
-    function New-InfoBox($labelText) {
-        $panel = New-Object System.Windows.Controls.StackPanel
-        $panel.Margin = "0,0,0,8"
-
-        $label = New-Object System.Windows.Controls.TextBlock
-        $label.Text = $labelText
-        $label.FontWeight = "Bold"
-        $panel.Children.Add($label) | Out-Null
-
-        $tb = New-Object System.Windows.Controls.TextBox
-        $tb.IsReadOnly = $true
-        $tb.AcceptsReturn = $true
-        $tb.TextWrapping = "Wrap"
-        $tb.VerticalScrollBarVisibility = "Auto"
-        $tb.HorizontalScrollBarVisibility = "Auto"
-        $tb.MinHeight = 120
-        $tb.Text = "Select the Info tab and click Refresh to load details."
-        $panel.Children.Add($tb) | Out-Null
-
-        return $panel, $tb
-    }
-
-    $systemPanel, $systemBox = New-InfoBox -labelText "System info"
-    $iniPanel, $iniBox = New-InfoBox -labelText "INI options"
-    $conflictPanel, $conflictBox = New-InfoBox -labelText "TPC/TXI conflicts"
-    $txiPanel, $txiBox = New-InfoBox -labelText "TXI files over 3KB"
+    $infoBox = New-Object System.Windows.Controls.TextBox
+    $infoBox.IsReadOnly = $true
+    $infoBox.AcceptsReturn = $true
+    $infoBox.TextWrapping = "Wrap"
+    $infoBox.VerticalScrollBarVisibility = "Auto"
+    $infoBox.HorizontalScrollBarVisibility = "Auto"
+    $infoBox.MinHeight = 240
+    $infoBox.Text = "Select the Info tab and click Refresh to load system details."
 
     $infoTab.Tag = @{
         Loaded = $false
-        Warnings = $warningBlock
-        SystemBox = $systemBox
-        IniBox = $iniBox
-        ConflictBox = $conflictBox
-        TxiBox = $txiBox
+        TextBox = $infoBox
     }
 
     $refreshBtn.Tag = $infoTab
@@ -643,19 +544,8 @@ function Build-Tabs {
         try {
             $tab = [System.Windows.Controls.TabItem]$s.Tag
             $tag = $tab.Tag
-            $data = Get-SystemInfoSections
-            $warnBlock = [System.Windows.Controls.TextBlock]$tag.Warnings
-            if ([string]::IsNullOrWhiteSpace($data.Warnings)) {
-                $warnBlock.Visibility = "Collapsed"
-                $warnBlock.Text = ""
-            } else {
-                $warnBlock.Text = $data.Warnings
-                $warnBlock.Visibility = "Visible"
-            }
-            ([System.Windows.Controls.TextBox]$tag.SystemBox).Text = $data.SystemInfo
-            ([System.Windows.Controls.TextBox]$tag.IniBox).Text = $data.IniOptions
-            ([System.Windows.Controls.TextBox]$tag.ConflictBox).Text = $data.Conflicts
-            ([System.Windows.Controls.TextBox]$tag.TxiBox).Text = $data.LargeTxi
+            $tb = [System.Windows.Controls.TextBox]$tag.TextBox
+            $tb.Text = Get-SystemInfoText
             $tag.Loaded = $true
             $tab.Tag = $tag
             $StatusText.Text = "System info loaded."
@@ -670,23 +560,8 @@ function Build-Tabs {
         try {
             $tab = [System.Windows.Controls.TabItem]$s.Tag
             $tag = $tab.Tag
-            $combined = @(
-                "Warnings:",
-                ([System.Windows.Controls.TextBlock]$tag.Warnings).Text,
-                "",
-                "System info:",
-                ([System.Windows.Controls.TextBox]$tag.SystemBox).Text,
-                "",
-                "INI options:",
-                ([System.Windows.Controls.TextBox]$tag.IniBox).Text,
-                "",
-                "TPC/TXI conflicts:",
-                ([System.Windows.Controls.TextBox]$tag.ConflictBox).Text,
-                "",
-                "TXI files over 3KB:",
-                ([System.Windows.Controls.TextBox]$tag.TxiBox).Text
-            ) -join "`r`n"
-            [System.Windows.Clipboard]::SetText($combined)
+            $tb = [System.Windows.Controls.TextBox]$tag.TextBox
+            [System.Windows.Clipboard]::SetText($tb.Text)
             $StatusText.Text = "Copied system info to clipboard."
         } catch {
             $StatusText.Text = "Copy failed: $($_.Exception.Message)"
@@ -700,8 +575,16 @@ function Build-Tabs {
             $baseDir = Split-Path -Parent $FilePath
             $outPath = Join-Path $baseDir 'filelist.txt'
             $items = Get-ChildItem -LiteralPath $baseDir -Recurse -Force -File
-            $paths = $items | ForEach-Object { $_.FullName.Substring($baseDir.Length).TrimStart('\') }
-            Set-Content -LiteralPath $outPath -Value ($paths -join "`r`n") -Encoding UTF8
+            $entries = $items | ForEach-Object {
+                $relative = $_.FullName.Substring($baseDir.Length).TrimStart('\')
+                $size = $_.Length
+                $stamp = $_.LastWriteTimeUtc.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
+                "$relative`t$size`t$stamp"
+            }
+            $lines = @()
+            $lines += "Path`tSizeBytes`tLastModifiedUTC"
+            $lines += $entries
+            Set-Content -LiteralPath $outPath -Value $lines -Encoding UTF8
             $StatusText.Text = "Indexed files to $(Split-Path -Leaf $outPath)"
         } catch {
             $StatusText.Text = "Index failed: $($_.Exception.Message)"
@@ -711,12 +594,8 @@ function Build-Tabs {
     $btnRow.Children.Add($refreshBtn) | Out-Null
     $btnRow.Children.Add($copyBtn) | Out-Null
     $btnRow.Children.Add($indexBtn) | Out-Null
-    $infoPanel.Children.Add($warningBlock) | Out-Null
     $infoPanel.Children.Add($btnRow) | Out-Null
-    $infoPanel.Children.Add($systemPanel) | Out-Null
-    $infoPanel.Children.Add($iniPanel) | Out-Null
-    $infoPanel.Children.Add($conflictPanel) | Out-Null
-    $infoPanel.Children.Add($txiPanel) | Out-Null
+    $infoPanel.Children.Add($infoBox) | Out-Null
     $infoScroll.Content = $infoPanel
     $infoTab.Content = $infoScroll
     $Tabs.Items.Add($infoTab) | Out-Null
