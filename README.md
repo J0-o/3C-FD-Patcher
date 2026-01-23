@@ -14,9 +14,7 @@ Included EXE Patches:
 - (Experimental) Borderless Window Mode
 
 How to use: 
-Run the patcher and choose your swkotor2.exe to patch. It will patch your game exe with the fixes listed above.
-It will check if you have an unmodified steam or gog version of the latest (Aspyr) patch, otherwise it wont run.
-It will also make a backup of your original swkotor2.exe.
+Place 3C-FD Tool in game folder and run it. For patching, go to patches tab and load exe. Then selected patches and apply.
 
 How this was made:
 - The fog shading was just covered up when the latest version was released. I was able to send that data to the new Fracture shaders and apply fog coloring. It checks if the fog color is set to black and if not then it applies fog. Modules that don't use fog have a default fog color of black, Duxn and Dantoonie use a grayish color.
