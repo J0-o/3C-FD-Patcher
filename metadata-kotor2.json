@@ -3,14 +3,14 @@
     {
       "name": "Display Options",
       "keys": [
-        { "key": "FullScreen", "type": "bool", "tooltip": "Display Options fullscreen flag." },
         { "key": "Disable Movies", "type": "bool", "tooltip": "Disables all movie playback (Bink .bik)." },
         { "key": "Disable Intro Movies", "type": "bool", "tooltip": "Skips intro/logo movies only." },
         { "key": "Sort Modules", "type": "bool", "tooltip": "Legacy flag affecting module ordering (undocumented)." },
         { "key": "Width", "type": "number", "tooltip": "Display Options width value." },
         { "key": "Height", "type": "number", "tooltip": "Display Options height value." },
         { "key": "BitsPerPixels", "type": "number", "tooltip": "Color depth value (typically 32)." },
-        { "key": "RefreshRate", "type": "number", "tooltip": "Display Options refresh rate value (Hz)." }
+        { "key": "RefreshRate", "type": "number", "tooltip": "Display Options refresh rate value (Hz)." },
+        { "key": "FullScreen (doesn't seem to function)", "type": "bool", "tooltip": "Display Options fullscreen flag." }
       ]
     },
     {
@@ -33,6 +33,7 @@
       "name": "Graphics Options",
       "keys": [
         { "key": "AllowWindowedMode", "type": "bool", "tooltip": "Enables windowed mode support." },
+        { "key": "FullScreen", "type": "bool", "tooltip": "Fullscreen mode toggle." },
         { "key": "ForceSpeed", "type": "bool", "tooltip": "Internal/undocumented speed toggle." },
         { "key": "Brightness", "type": "slider-int", "min": 0, "max": 100, "tooltip": "Gamma/brightness (0-100)." },
         { "key": "RefreshRate", "type": "slider-int", "min": 30, "max": 240, "tooltip": "Refresh rate for the selected resolution (Hz)." },
@@ -47,7 +48,6 @@
         { "key": "Soft Shadows", "type": "bool", "tooltip": "Soft shadow rendering toggle." },
         { "key": "Shadows", "type": "bool", "tooltip": "Master toggle for dynamic shadows." },
         { "key": "EnableHardwareMouse", "type": "bool", "tooltip": "Hardware cursor toggle." },
-        { "key": "FullScreen", "type": "bool", "tooltip": "Fullscreen mode toggle." },
         { "key": "Disable Vertex Buffer Objects", "type": "bool", "tooltip": "Disables OpenGL vertex buffer objects." }
       ]
     },

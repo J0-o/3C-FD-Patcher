@@ -120,7 +120,7 @@ try {
     $BaseDirectory = if ($baseForIni) { $baseForIni } else { Split-Path -Parent (Resolve-Path -LiteralPath $FilePath) }
     $ResolvedGame = Resolve-Game -RequestedGame $Game -BaseDirectory $BaseDirectory
     $Metadata = Load-Metadata -ResolvedGame $ResolvedGame -BaseDirectory $ToolDirectory
-    $State = Read-Ini -Path $FilePath
+$State = Read-Ini -Path $FilePath
 } catch {
     Add-Type -AssemblyName PresentationFramework
     [System.Windows.MessageBox]::Show(
@@ -133,6 +133,50 @@ try {
 }
 
 Add-Type -AssemblyName PresentationFramework
+
+# Track which INI keys originally existed
+function New-KeyId {
+    param([string]$Section, [string]$Key)
+    return "$Section||$Key"
+}
+
+$OriginalSections = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+$OriginalKeySet   = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+$OriginalValues   = @{}
+foreach ($sec in $State.Keys) {
+    $null = $OriginalSections.Add($sec)
+    foreach ($k in $State[$sec].Keys) {
+        $null = $OriginalKeySet.Add((New-KeyId -Section $sec -Key $k))
+        $OriginalValues[(New-KeyId -Section $sec -Key $k)] = [string]$State[$sec][$k]
+    }
+}
+
+$ChangedKeySet = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+function Update-ChangedFlag {
+    param([string]$Section, [string]$Key, [string]$CurrentValue)
+    $id = New-KeyId -Section $Section -Key $Key
+    if ($OriginalKeySet.Contains($id)) {
+        $orig = $OriginalValues[$id]
+        if ($CurrentValue -ceq $orig) {
+            $null = $ChangedKeySet.Remove($id)
+        } else {
+            $null = $ChangedKeySet.Add($id)
+        }
+    } else {
+        if ([string]::IsNullOrEmpty($CurrentValue) -or $CurrentValue -ceq "0") {
+            $null = $ChangedKeySet.Remove($id)
+        } else {
+            $null = $ChangedKeySet.Add($id)
+        }
+    }
+}
+
+function Set-StateValue {
+    param([string]$Section, [string]$Key, [string]$Value)
+    if (-not $State.Contains($Section)) { $State[$Section] = [ordered]@{} }
+    $State[$Section][$Key] = $Value
+    Update-ChangedFlag -Section $Section -Key $Key -CurrentValue $Value
+}
 
 # --- Base window markup ---
 $xaml = @"
@@ -160,7 +204,7 @@ $Tabs   = $Window.FindName("Tabs")
 $SaveBtn = $Window.FindName("SaveBtn")
 $StatusText = $Window.FindName("StatusText")
 $Window.Title = "3C-FD Tool ($ResolvedGame)"
-# Set window icon if available for a consistent branded look.
+# Set window icon if available
     try {
         $iconPath = Join-Path $ToolDirectory 'icon.ico'
         if (Test-Path -LiteralPath $iconPath) {
@@ -170,7 +214,6 @@ $Window.Title = "3C-FD Tool ($ResolvedGame)"
             $bi.UriSource = $uri
             $bi.EndInit()
             $Window.Icon = $bi
-            # Also set taskbar info to ensure the taskbar uses our icon instead of PowerShell's.
             $taskInfo = New-Object System.Windows.Shell.TaskbarItemInfo
             $taskInfo.Description = "3C-FD Tool"
             $Window.TaskbarItemInfo = $taskInfo
@@ -179,7 +222,7 @@ $Window.Title = "3C-FD Tool ($ResolvedGame)"
         # ignore icon load failures
     }
 
-# Load patcher functions (dot-source) without executing main logic
+# Load patcher functions
 $patcherPath = Join-Path $ToolDirectory 'patcher.ps1'
 if (-not (Test-Path -LiteralPath $patcherPath)) {
     throw "patcher.ps1 not found in $ToolDirectory"
@@ -247,8 +290,13 @@ function Render-Patches {
 }
 
 # --- Info tab content builder ---
-function Get-SystemInfoText {
-    $lines = New-Object System.Collections.Generic.List[string]
+function Get-SystemInfoSections {
+    $section = @{
+        System    = New-Object System.Collections.Generic.List[string]
+        Ini       = New-Object System.Collections.Generic.List[string]
+        Conflicts = New-Object System.Collections.Generic.List[string]
+        Workshop  = New-Object System.Collections.Generic.List[string]
+    }
 
     if (-not ("DisplayUtil" -as [type])) {
         Add-Type -TypeDefinition @"
@@ -315,15 +363,15 @@ public static class DisplayUtil
 
     try {
         $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
-        if ($cpu) { $lines.Add("CPU: $($cpu.Name)") }
+        if ($cpu) { $section.System.Add("CPU: $($cpu.Name)") }
     } catch {
-        $lines.Add("CPU: <unavailable>")
+        $section.System.Add("CPU: <unavailable>")
     }
 
     try {
         $gpus = Get-CimInstance Win32_VideoController
         if ($gpus) {
-            $lines.Add("GPUs:")
+            $section.System.Add("GPUs:")
             foreach ($gpu in $gpus) {
                 $name = $gpu.Name
                 $ram = if ($gpu.AdapterRAM) { "{0:N0} MB" -f ([Math]::Round($gpu.AdapterRAM / 1MB)) } else { $null }
@@ -332,13 +380,13 @@ public static class DisplayUtil
                 if ($ram) { $extra += $ram }
                 if ($driver) { $extra += "Driver $driver" }
                 $suffix = if ($extra.Count) { " (" + ($extra -join ", ") + ")" } else { "" }
-                $lines.Add("  - $name$suffix")
+                $section.System.Add("  - $name$suffix")
             }
         } else {
-            $lines.Add("GPUs: <none detected>")
+            $section.System.Add("GPUs: <none detected>")
         }
     } catch {
-        $lines.Add("GPUs: <unavailable>")
+        $section.System.Add("GPUs: <unavailable>")
     }
 
     try {
@@ -347,20 +395,20 @@ public static class DisplayUtil
             $caption = $os.Caption
             $version = $os.Version
             $build = $os.BuildNumber
-            $lines.Add("Windows: $caption (Version $version, Build $build)")
+            $section.System.Add("Windows: $caption (Version $version, Build $build)")
         }
     } catch {
-        $lines.Add("Windows: <unavailable>")
+        $section.System.Add("Windows: <unavailable>")
     }
 
     try {
         # Reliable monitor enumeration is tricky via Win32_DesktopMonitor; use Screen + EDID where available.
-        $lines.Add("Displays (Screens):")
+        $section.System.Add("Displays (Screens):")
         try {
             Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
             $screens = [System.Windows.Forms.Screen]::AllScreens
             if (-not $screens -or $screens.Count -eq 0) {
-                $lines.Add("  - <none detected>")
+                $section.System.Add("  - <none detected>")
             } else {
                 foreach ($s in $screens) {
                     $b = $s.Bounds
@@ -368,19 +416,19 @@ public static class DisplayUtil
                     $hz = $null
                     try { $hz = [DisplayUtil]::GetCurrentRefreshRate($s.DeviceName) } catch { $hz = $null }
                     $hzText = if ($hz) { " ${hz}Hz" } else { "" }
-                    $lines.Add("  - $($s.DeviceName): $($b.Width)x$($b.Height)${hzText} @ ($($b.X),$($b.Y))$isPrimary")
+                    $section.System.Add("  - $($s.DeviceName): $($b.Width)x$($b.Height)${hzText} @ ($($b.X),$($b.Y))$isPrimary")
                 }
             }
         } catch {
-            $lines.Add("  - <unavailable: $($_.Exception.Message)>")
+            $section.System.Add("  - <unavailable: $($_.Exception.Message)>")
         }
     } catch {
-        $lines.Add("Monitors: <unavailable>")
+        $section.System.Add("Monitors: <unavailable>")
     }
 
     try {
         $iniName = Split-Path -Leaf $FilePath
-        $lines.Add("INI ($iniName) Graphics Options:")
+        $section.Ini.Add("INI ($iniName) Graphics Options:")
 
         function Get-IniValue {
             param([string]$Section, [string]$Key)
@@ -417,38 +465,62 @@ public static class DisplayUtil
         foreach ($p in $pairs) {
             $raw = Get-IniValue -Section $graphicsSection -Key $p.Key
             $val = if ($p.Type -eq 'bool') { Format-BoolIni -Value $raw } else { if ($null -eq $raw) { "<missing>" } else { $raw } }
-            $lines.Add("  - $($p.Label): $val")
+            $section.Ini.Add("  - $($p.Label): $val")
         }
     } catch {
-        $lines.Add("INI Graphics Options: <unavailable: $($_.Exception.Message)>")
+        $section.Ini.Add("INI Graphics Options: <unavailable: $($_.Exception.Message)>")
     }
 
     try {
         $overridePath = Join-Path (Split-Path -Parent $FilePath) "Override"
         if (Test-Path -LiteralPath $overridePath) {
             $count = (Get-ChildItem -LiteralPath $overridePath -File -Recurse -Force | Measure-Object).Count
-            $lines.Add("Override folder files: $count")
+            $section.Conflicts.Add("Override folder files: $count")
 
             try {
                 $tpc = Get-ChildItem -LiteralPath $overridePath -Recurse -File -Force -Filter *.tpc
                 $txi = Get-ChildItem -LiteralPath $overridePath -Recurse -File -Force -Filter *.txi
-                $tpcNames = $tpc | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name).ToLowerInvariant() }
-                $txiNames = $txi | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name).ToLowerInvariant() }
-                $tpcSet = [System.Collections.Generic.HashSet[string]]::new()
-                foreach ($n in $tpcNames) { [void]$tpcSet.Add($n) }
-                $conflicts = 0
-                foreach ($n in $txiNames) {
-                    if ($tpcSet.Contains($n)) { $conflicts++ }
+                $tpcLookup = @{}
+                foreach ($f in $tpc) {
+                    $base = [IO.Path]::GetFileNameWithoutExtension($f.Name).ToLowerInvariant()
+                    if (-not $tpcLookup.ContainsKey($base)) { $tpcLookup[$base] = $f }
                 }
-                $lines.Add("TPC/TXI Conflicts: $conflicts")
+                $conflictEntries = New-Object System.Collections.Generic.List[string]
+                foreach ($f in $txi) {
+                    $base = [IO.Path]::GetFileNameWithoutExtension($f.Name).ToLowerInvariant()
+                    if ($tpcLookup.ContainsKey($base)) {
+                        $tpcFile = $tpcLookup[$base]
+                        $txiRel = $f.FullName.Substring($overridePath.Length).TrimStart('\')
+                        $tpcRel = $tpcFile.FullName.Substring($overridePath.Length).TrimStart('\')
+                        $conflictEntries.Add("  - $base (txi: $txiRel, tpc: $tpcRel)")
+                    }
+                }
+                $section.Conflicts.Add("TPC/TXI Conflicts: " + $conflictEntries.Count)
+                if ($conflictEntries.Count -gt 0) {
+                    $section.Conflicts.AddRange($conflictEntries)
+                }
             } catch {
-                $lines.Add("TPC/TXI Conflicts: <unavailable>")
+                $section.Conflicts.Add("TPC/TXI Conflicts: <unavailable>")
+            }
+
+            try {
+                $largeTxi = @(Get-ChildItem -LiteralPath $overridePath -Recurse -File -Force -Filter *.txi | Where-Object { $_.Length -gt 3KB })
+                $section.Conflicts.Add("TXI files over 3 KB: $($largeTxi.Count)")
+                foreach ($f in $largeTxi | Sort-Object FullName) {
+                    $rel = $f.FullName.Substring($overridePath.Length).TrimStart('\')
+                    $sizeKb = [Math]::Round($f.Length / 1KB, 1)
+                    $section.Conflicts.Add("  - $rel (${sizeKb} KB)")
+                }
+            } catch {
+                $section.Conflicts.Add("TXI files over 3 KB: <unavailable: $($_.Exception.Message)>")
             }
         } else {
-            $lines.Add("Override folder files: <not found>")
+            $section.Conflicts.Add("Override folder files: <not found>")
+            $section.Conflicts.Add("TXI files over 3 KB: Override folder not found")
         }
     } catch {
-        $lines.Add("Override folder files: <unavailable: $($_.Exception.Message)>")
+        $section.Conflicts.Add("Override folder files: <unavailable: $($_.Exception.Message)>")
+        $section.Conflicts.Add("TXI files over 3 KB: <unavailable>")
     }
 
     try {
@@ -457,9 +529,9 @@ public static class DisplayUtil
             $sigData = Get-Content -LiteralPath $sigPath -Raw -Encoding UTF8 | ConvertFrom-Json
             $sigs = @($sigData.signatures | Where-Object { $_.game -eq $ResolvedGame })
             $exePath = Resolve-ExePath -GameId $ResolvedGame -BaseDirectory (Split-Path -Parent $FilePath)
+            $matchedName = $null
             if ($exePath -and $sigs.Count -gt 0) {
                 $exeBytes = [IO.File]::ReadAllBytes($exePath)
-                $matched = $null
                 foreach ($s in $sigs) {
                     $pat = Convert-HexPattern -Hex ([string]$s.hex)
                     $offset = [int]$s.offset
@@ -469,21 +541,63 @@ public static class DisplayUtil
                         for ($i = 0; $i -lt $pat.Bytes.Length; $i++) {
                             if ($pat.Bytes[$i] -ne $slice[$i]) { $eq = $false; break }
                         }
-                        if ($eq) { $matched = "$($s.name) @ 0x{0:X}" -f $offset; break }
+                        if ($eq) { $matchedName = $s.name; break }
                     }
                 }
-                if ($matched) {
-                    $lines.Add("EXE signature: $matched")
+                if ($matchedName) {
+                    $section.System.Add("EXE signature: $matchedName")
                 } else {
-                    $lines.Add("EXE signature: <unknown>")
+                    $section.System.Add("EXE signature: <unknown>")
                 }
             }
         }
     } catch {
-        $lines.Add("EXE signature: <unavailable: $($_.Exception.Message)>")
+        $section.System.Add("EXE signature: <unavailable: $($_.Exception.Message)>")
     }
 
-    return ($lines -join "`r`n")
+    # --- Steam Workshop detection (KOTOR 2 Steam build only) ---
+    try {
+        if ($ResolvedGame -eq 'kotor2' -and $matchedName -eq 'KOTOR 2 Steam') {
+            $gameDir = Split-Path -Parent $FilePath            # .../steamapps/common/<game>
+            $commonDir = Split-Path -Parent $gameDir            # .../steamapps/common
+            $steamapps = Split-Path -Parent $commonDir          # .../steamapps
+
+            if ($steamapps -and (Split-Path -Leaf $commonDir) -ieq 'common' -and (Split-Path -Leaf $steamapps) -ieq 'steamapps') {
+                $workshopPath = Join-Path $steamapps 'workshop\\content\\208580'
+                if (Test-Path -LiteralPath $workshopPath) {
+                    $mods = @(Get-ChildItem -LiteralPath $workshopPath -Directory -Force)
+                    if ($mods.Count -gt 0) {
+                        $section.Workshop.Add("Steam Workshop mods under 208580: $($mods.Count)")
+                        foreach ($mod in $mods) {
+                            $section.Workshop.Add("  - $($mod.Name)")
+                            $files = @(Get-ChildItem -LiteralPath $mod.FullName -File -Recurse -Force)
+                            foreach ($f in $files | Sort-Object FullName) {
+                                $rel = $f.FullName.Substring($mod.FullName.Length).TrimStart('\\')
+                                $section.Workshop.Add("      * $rel")
+                            }
+                        }
+                    } else {
+                        $section.Workshop.Add("Steam Workshop (208580): no subdirectories found.")
+                    }
+                } else {
+                    $section.Workshop.Add("Steam Workshop path not found: $workshopPath")
+                }
+            } else {
+                $section.Workshop.Add("Steam Workshop scan skipped: game not under steamapps/common.")
+            }
+        } else {
+            $section.Workshop.Add("Steam Workshop scan skipped (not KOTOR 2 Steam signature).")
+        }
+    } catch {
+        $section.Workshop.Add("Steam Workshop scan failed: $($_.Exception.Message)")
+    }
+
+    return [pscustomobject]@{
+        System    = $section.System
+        Ini       = $section.Ini
+        Conflicts = $section.Conflicts
+        Workshop  = $section.Workshop
+    }
 }
 
 # --- Control factory helpers ---
@@ -524,18 +638,35 @@ function Build-Tabs {
     $indexBtn.Padding = "10,6"
     $indexBtn.Margin = "8,0,0,0"
 
-    $infoBox = New-Object System.Windows.Controls.TextBox
-    $infoBox.IsReadOnly = $true
-    $infoBox.AcceptsReturn = $true
-    $infoBox.TextWrapping = "Wrap"
-    $infoBox.VerticalScrollBarVisibility = "Auto"
-    $infoBox.HorizontalScrollBarVisibility = "Auto"
-    $infoBox.MinHeight = 240
-    $infoBox.Text = "Select the Info tab and click Refresh to load system details."
+    function New-SectionBox([string]$header) {
+        $box = New-Object System.Windows.Controls.GroupBox
+        $box.Header = $header
+        $box.Margin = "0,0,0,8"
+        $tb = New-Object System.Windows.Controls.TextBox
+        $tb.IsReadOnly = $true
+        $tb.AcceptsReturn = $true
+        $tb.TextWrapping = "Wrap"
+        $tb.VerticalScrollBarVisibility = "Auto"
+        $tb.HorizontalScrollBarVisibility = "Auto"
+        $tb.MinHeight = 120
+        $tb.Text = "Select the Info tab and click Refresh to load details."
+        $box.Content = $tb
+        return @{ Box = $box; TextBox = $tb }
+    }
+
+    $systemBox = New-SectionBox -header "System Info"
+    $iniBox = New-SectionBox -header "INI Options"
+    $conflictBox = New-SectionBox -header "TPC/TXI Conflicts"
+    $workshopBox = New-SectionBox -header "Steam Workshop (KOTOR 2 Steam)"
 
     $infoTab.Tag = @{
         Loaded = $false
-        TextBox = $infoBox
+        Sections = @{
+            System = $systemBox.TextBox
+            Ini = $iniBox.TextBox
+            Conflicts = $conflictBox.TextBox
+            Workshop = $workshopBox.TextBox
+        }
     }
 
     $refreshBtn.Tag = $infoTab
@@ -544,8 +675,12 @@ function Build-Tabs {
         try {
             $tab = [System.Windows.Controls.TabItem]$s.Tag
             $tag = $tab.Tag
-            $tb = [System.Windows.Controls.TextBox]$tag.TextBox
-            $tb.Text = Get-SystemInfoText
+            $sections = $tag.Sections
+            $data = Get-SystemInfoSections
+            $sections.System.Text    = ($data.System   -join "`r`n")
+            $sections.Ini.Text       = ($data.Ini      -join "`r`n")
+            $sections.Conflicts.Text = ($data.Conflicts -join "`r`n")
+            $sections.Workshop.Text  = ($data.Workshop -join "`r`n")
             $tag.Loaded = $true
             $tab.Tag = $tag
             $StatusText.Text = "System info loaded."
@@ -560,8 +695,21 @@ function Build-Tabs {
         try {
             $tab = [System.Windows.Controls.TabItem]$s.Tag
             $tag = $tab.Tag
-            $tb = [System.Windows.Controls.TextBox]$tag.TextBox
-            [System.Windows.Clipboard]::SetText($tb.Text)
+            $sections = $tag.Sections
+            $combined = @(
+                "=== System Info ==="
+                $sections.System.Text
+                ""
+                "=== INI Options ==="
+                $sections.Ini.Text
+                ""
+                "=== TPC/TXI Conflicts ==="
+                $sections.Conflicts.Text
+                ""
+                "=== Steam Workshop ==="
+                $sections.Workshop.Text
+            ) -join "`r`n"
+            [System.Windows.Clipboard]::SetText($combined)
             $StatusText.Text = "Copied system info to clipboard."
         } catch {
             $StatusText.Text = "Copy failed: $($_.Exception.Message)"
@@ -573,19 +721,25 @@ function Build-Tabs {
         param($s, $e)
         try {
             $baseDir = Split-Path -Parent $FilePath
-            $outPath = Join-Path $baseDir 'filelist.txt'
+            $simplePath = Join-Path $baseDir 'filelist_simple.txt'
+            $detailedPath = Join-Path $baseDir 'filelist_detailed.txt'
             $items = Get-ChildItem -LiteralPath $baseDir -Recurse -Force -File
-            $entries = $items | ForEach-Object {
+            $entriesDetailed = $items | ForEach-Object {
                 $relative = $_.FullName.Substring($baseDir.Length).TrimStart('\')
                 $size = $_.Length
                 $stamp = $_.LastWriteTimeUtc.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
-                "$relative`t$size`t$stamp"
+                "$relative,$size,$stamp"
             }
-            $lines = @()
-            $lines += "Path`tSizeBytes`tLastModifiedUTC"
-            $lines += $entries
-            Set-Content -LiteralPath $outPath -Value $lines -Encoding UTF8
-            $StatusText.Text = "Indexed files to $(Split-Path -Leaf $outPath)"
+            $entriesSimple = $items | ForEach-Object {
+                $_.FullName.Substring($baseDir.Length).TrimStart('\')
+            }
+
+            $linesDetailed = @()
+            $linesDetailed += "Path,SizeBytes,LastModifiedUTC"
+            $linesDetailed += $entriesDetailed
+            Set-Content -LiteralPath $detailedPath -Value $linesDetailed -Encoding UTF8
+            Set-Content -LiteralPath $simplePath -Value $entriesSimple -Encoding UTF8
+            $StatusText.Text = "Indexed files to $(Split-Path -Leaf $simplePath) and $(Split-Path -Leaf $detailedPath)"
         } catch {
             $StatusText.Text = "Index failed: $($_.Exception.Message)"
         }
@@ -595,7 +749,10 @@ function Build-Tabs {
     $btnRow.Children.Add($copyBtn) | Out-Null
     $btnRow.Children.Add($indexBtn) | Out-Null
     $infoPanel.Children.Add($btnRow) | Out-Null
-    $infoPanel.Children.Add($infoBox) | Out-Null
+    $infoPanel.Children.Add($systemBox.Box) | Out-Null
+    $infoPanel.Children.Add($iniBox.Box) | Out-Null
+    $infoPanel.Children.Add($conflictBox.Box) | Out-Null
+    $infoPanel.Children.Add($workshopBox.Box) | Out-Null
     $infoScroll.Content = $infoPanel
     $infoTab.Content = $infoScroll
     $Tabs.Items.Add($infoTab) | Out-Null
@@ -819,12 +976,12 @@ function Build-Tabs {
                     $cb.Add_Checked({
                         param($s,$e)
                         $tag = $s.Tag
-                        $State[$tag.sec][$tag.key] = "1"
+                        Set-StateValue -Section $tag.sec -Key $tag.key -Value "1"
                     })
                     $cb.Add_Unchecked({
                         param($s,$e)
                         $tag = $s.Tag
-                        $State[$tag.sec][$tag.key] = "0"
+                        Set-StateValue -Section $tag.sec -Key $tag.key -Value "0"
                     })
                     $group.Children.Add($cb)
                 }
@@ -868,7 +1025,7 @@ function Build-Tabs {
                         param($s,$e)
                         $tag = $s.Tag
                         $v = [int][Math]::Round($s.Value)
-                        $State[$tag.sec][$tag.key] = [string]$v
+                        Set-StateValue -Section $tag.sec -Key $tag.key -Value ([string]$v)
                         $tag.tb.Text = [string]$v
                     })
 
@@ -879,7 +1036,7 @@ function Build-Tabs {
                         if (-not [int]::TryParse($s.Text, [ref]$v)) { return }
                         if ($v -lt $tag.min) { $v = $tag.min }
                         if ($v -gt $tag.max) { $v = $tag.max }
-                        $State[$tag.sec][$tag.key] = [string]$v
+                        Set-StateValue -Section $tag.sec -Key $tag.key -Value ([string]$v)
                     })
 
                     $dock.Children.Add($tb) | Out-Null
@@ -895,7 +1052,7 @@ function Build-Tabs {
                     $tb.Add_TextChanged({
                         param($s,$e)
                         $tag = $s.Tag
-                        $State[$tag.sec][$tag.key] = $s.Text
+                        Set-StateValue -Section $tag.sec -Key $tag.key -Value $s.Text
                     })
                     $group.Children.Add($tb)
                 }
@@ -912,7 +1069,23 @@ function Build-Tabs {
 # --- Save handler ---
 function Save-Data {
     try {
-        Write-Ini -Data $State -Path $FilePath
+        $toWrite = [ordered]@{}
+        foreach ($sec in $State.Keys) {
+            $secKeys = @()
+            foreach ($k in $State[$sec].Keys) {
+                $id = New-KeyId -Section $sec -Key $k
+                if ($OriginalKeySet.Contains($id) -or $ChangedKeySet.Contains($id)) {
+                    $secKeys += $k
+                }
+            }
+            if ($secKeys.Count -eq 0) { continue }
+            $toWrite[$sec] = [ordered]@{}
+            foreach ($k in $secKeys) {
+                $toWrite[$sec][$k] = $State[$sec][$k]
+            }
+        }
+
+        Write-Ini -Data $toWrite -Path $FilePath
         $StatusText.Text = "Saved to $FilePath"
     } catch {
         $StatusText.Text = "Save failed: $($_.Exception.Message)"

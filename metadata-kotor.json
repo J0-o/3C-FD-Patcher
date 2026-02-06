@@ -56,6 +56,7 @@
       "name": "Graphics Options",
       "keys": [
         { "key": "AllowWindowedMode", "type": "bool", "tooltip": "Allows windowed mode." },
+        { "key": "FullScreen", "type": "bool", "tooltip": "Fullscreen mode toggle." },
         { "key": "RefreshRate", "type": "slider-int", "min": 30, "max": 240, "tooltip": "Monitor refresh rate (Hz)." },
         { "key": "Height", "type": "number", "tooltip": "Screen resolution height in pixels." },
         { "key": "Width", "type": "number", "tooltip": "Screen resolution width in pixels." },
@@ -70,7 +71,6 @@
         { "key": "Shadows", "type": "bool", "tooltip": "Master toggle for dynamic shadows." },
         { "key": "Brightness", "type": "slider-int", "min": 0, "max": 100, "tooltip": "Gamma/brightness control (0-100)." },
         { "key": "EnableHardwareMouse", "type": "bool", "tooltip": "Hardware cursor toggle." },
-        { "key": "FullScreen", "type": "bool", "tooltip": "Fullscreen mode toggle." },
         { "key": "Disable Vertex Buffer Objects", "type": "bool", "tooltip": "Disables OpenGL vertex buffer objects." }
       ]
     },
