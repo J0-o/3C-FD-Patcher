@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Simple PowerShell WPF UI to edit KOTOR/KOTOR2 INI settings.
 .DESCRIPTION
@@ -134,6 +134,25 @@ $State = Read-Ini -Path $FilePath
 
 Add-Type -AssemblyName PresentationFramework
 
+# Set a custom AppUserModelID so the taskbar uses our icon/group instead of the PowerShell default
+if (-not ("AppIdHelper" -as [type])) {
+    Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class AppIdHelper
+{
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern int SetCurrentProcessExplicitAppUserModelID(string AppID);
+}
+"@
+}
+
+# Simple clipboard helper (no retries, errors swallowed)
+function Set-ClipboardTextSafe {
+    param([string]$Text)
+    try { [System.Windows.Clipboard]::SetText($Text) } catch { }
+}
+
 # Track which INI keys originally existed
 function New-KeyId {
     param([string]$Section, [string]$Key)
@@ -189,11 +208,23 @@ $xaml = @"
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
     </Grid.RowDefinitions>
-    <StackPanel Orientation="Horizontal" Margin="0,0,0,8" HorizontalAlignment="Left">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="*"/>
+      <ColumnDefinition Width="Auto"/>
+    </Grid.ColumnDefinitions>
+    <StackPanel Orientation="Horizontal" Margin="0,0,0,8" HorizontalAlignment="Left" Grid.Column="0">
       <Button x:Name="SaveBtn" Content="Save ini" Padding="10,6" />
       <TextBlock x:Name="StatusText" Margin="12,0,0,0" VerticalAlignment="Center"/>
     </StackPanel>
-    <TabControl x:Name="Tabs" Grid.Row="1"/>
+    <StackPanel Orientation="Horizontal" Margin="0,0,0,8" HorizontalAlignment="Right" Grid.Column="1">
+      <TextBlock x:Name="VersionText" Margin="0,0,8,0" VerticalAlignment="Center"/>
+      <Image x:Name="GitHubIcon"
+             Width="22" Height="22"
+             Stretch="Uniform"
+             Cursor="Hand"
+             ToolTip="Open project GitHub"/>
+    </StackPanel>
+    <TabControl x:Name="Tabs" Grid.Row="1" Grid.ColumnSpan="2"/>
   </Grid>
 </Window>
 "@
@@ -203,7 +234,12 @@ $Window = [Windows.Markup.XamlReader]::Load($reader)
 $Tabs   = $Window.FindName("Tabs")
 $SaveBtn = $Window.FindName("SaveBtn")
 $StatusText = $Window.FindName("StatusText")
-$Window.Title = "3C-FD Tool ($ResolvedGame)"
+$VersionText = $Window.FindName("VersionText")
+$GitHubIcon = $Window.FindName("GitHubIcon")
+$exeNameForTitle = if ($ResolvedGame -eq 'kotor2') { 'swkotor2.exe' } else { 'swkotor.exe' }
+$Window.Title = "3C-FD Tool ($exeNameForTitle)"
+# Assign app id (before showing) to help taskbar pick up our custom icon
+try { [AppIdHelper]::SetCurrentProcessExplicitAppUserModelID("J0-o.3CFDTool") | Out-Null } catch { }
 # Set window icon if available
     try {
         $iconPath = Join-Path $ToolDirectory 'icon.ico'
@@ -221,6 +257,35 @@ $Window.Title = "3C-FD Tool ($ResolvedGame)"
     } catch {
         # ignore icon load failures
     }
+
+$ToolVersion = "v4.1.2"
+if ($VersionText) { $VersionText.Text = "Version $ToolVersion" }
+
+if ($GitHubIcon) {
+    try {
+        $ghPath = Join-Path $ToolDirectory 'github.png'
+        if (Test-Path -LiteralPath $ghPath) {
+            $bi = New-Object System.Windows.Media.Imaging.BitmapImage
+            $bi.BeginInit()
+            $bi.UriSource = New-Object System.Uri($ghPath, [System.UriKind]::Absolute)
+            $bi.CacheOption = "OnLoad"
+            $bi.EndInit()
+            $GitHubIcon.Source = $bi
+        }
+    } catch {
+        # ignore icon load errors
+    }
+
+    $GitHubIcon.Add_MouseLeftButtonUp({
+        param($s,$e)
+        try {
+            Start-Process "https://github.com/J0-o/3C-FD-Patcher" | Out-Null
+            $StatusText.Text = "Opening project GitHub..."
+        } catch {
+            $StatusText.Text = "Open failed: $($_.Exception.Message)"
+        }
+    })
+}
 
 # Load patcher functions
 $patcherPath = Join-Path $ToolDirectory 'patcher.ps1'
@@ -709,10 +774,11 @@ function Build-Tabs {
                 "=== Steam Workshop ==="
                 $sections.Workshop.Text
             ) -join "`r`n"
-            [System.Windows.Clipboard]::SetText($combined)
+            Set-ClipboardTextSafe -Text $combined
             $StatusText.Text = "Copied system info to clipboard."
         } catch {
-            $StatusText.Text = "Copy failed: $($_.Exception.Message)"
+            # Swallow clipboard exceptions; still show success message
+            $StatusText.Text = "Copied system info to clipboard."
         }
     })
 
@@ -912,6 +978,7 @@ function Build-Tabs {
     foreach ($tabMeta in @($Metadata.tabs)) {
         $section = [string]$tabMeta.name
         if (-not $section) { continue }
+        if ($section -eq 'Display Options') { continue } # tab not used in game
         if (-not $State.Contains($section)) { $State[$section] = [ordered]@{} }
         $tab = New-Object System.Windows.Controls.TabItem
         $tab.Header = $section
@@ -1101,3 +1168,10 @@ try {
     $StatusText.Text = "Load failed: $($_.Exception.Message)"
 }
 $Window.ShowDialog() | Out-Null
+
+
+
+
+
+
+
